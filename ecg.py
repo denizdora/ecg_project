@@ -28,14 +28,14 @@ rpeaks_indices = info["ECG_R_Peaks"]  # indices of the R-peak samples
 # Creating time axis
 time = np.linspace(0, duration, len(ecg))
 
-# 3) Plotting ECG + Detected R-peaks
+# Plotting ECG + Detected R-peaks
 fig, ax = plt.subplots(figsize=(10, 4))
 ax.plot(time, ecg, label="ECG Signal", color="blue")
 
 # Plotting R-peaks as red circles
 ax.plot(time[rpeaks_indices], ecg[rpeaks_indices],
         "ro", label="Detected R-peaks", markersize=8, fillstyle="none")
-    
+
 ax.set_xlabel("Time (seconds)")
 ax.set_ylabel("Amplitude")
 ax.set_title("ECG Signal with Detected QRS Complexes")
@@ -44,53 +44,60 @@ ax.legend()
 # Displaying the plot in Streamlit
 st.pyplot(fig)
 
-# --- Collapsible Explanations Section ---
+# Expander for more info
 with st.expander("What is HRV (Heart Rate Variability)?"):
     st.write(
         """
-        **Heart Rate Variability (HRV)** is the measure of the variation in
-        time (in milliseconds) between consecutive heartbeats. It’s a 
-        non-invasive way to assess how well the body’s autonomic nervous 
-        system (ANS) responds to internal and external stressors.
-        
+        **Heart Rate Variability (HRV)** is simply how much the time
+        between one heartbeat and the next changes. Even though we often
+        think our heart beats like a metronome, there's always a bit of
+        variation — and that variation can tell us a lot about our health
+        and stress levels.
+
         - **Why it matters:** 
-          - A **higher HRV** often indicates a healthy balance between the 
-            'fight-or-flight' (sympathetic) and 'rest-and-digest' 
-            (parasympathetic) branches of the ANS. This can correlate with
-            better cardiovascular fitness and stress resilience.
-          - A **lower HRV** can be a sign of fatigue, overtraining (in 
-            athletes), or chronic stress. It may also be associated 
-            with certain cardiovascular or metabolic conditions.
+          - A **higher HRV** suggests your heart is flexible and responds
+            well to changes (like stress or rest), often linked to better
+            fitness and overall health.
+          - A **lower HRV** may point to stress, fatigue, or potential
+            health issues. Athletes sometimes see a drop if they're
+            overtraining.
         - **Common uses:** 
-          - Monitoring stress and recovery in sports and wellness.
-          - Detecting early signs of health issues or tracking chronic 
-            conditions.
-          - Biofeedback training, where people learn to regulate HRV to 
-            improve relaxation and stress response.
+          - Checking how well your body recovers from exercise or daily
+            stress.
+          - Spotting early signs of heart or health problems.
+          - Biofeedback (learning techniques to help control and improve
+            your HRV, which can reduce stress).
         """
     )
 
 with st.expander("What is the QRS Complex?"):
     st.write(
         """
-        The **QRS Complex** on an ECG trace represents the rapid 
-        depolarization (electrical activation) of the ventricles, which 
-        triggers the main pumping action of the heart. It typically 
-        includes three main parts:
-        
-        - **Q wave:** A small negative deflection that appears just before 
-          the large R wave.
-        - **R wave:** The prominent, tall spike and the most visually 
-          recognizable component of the ECG cycle.
-        - **S wave:** A negative deflection following the R wave.
+        The **QRS Complex** is the main spike you see on an ECG, which
+        measures the heart’s electrical signals. It reflects the moment
+        your heart’s lower chambers (ventricles) contract to pump blood
+        throughout the body.
+
+        - **Parts of the QRS Complex:** 
+          - **Q wave:** A small dip before the biggest spike.
+          - **R wave:** The tall, sharp peak that's easiest to spot.
+          - **S wave:** A small dip right after the R wave.
         
         **Why it matters:**
-        - **R-Peaks** (the highest point of the QRS Complex) are commonly 
-          used to calculate heart rate, as they mark one cardiac cycle.
-        - **Shape & Duration** of the QRS Complex can help identify
-          conduction abnormalities, ventricular hypertrophy, or arrhythmias.
-        - Accurate detection of QRS complexes is crucial for reliable 
-          measurement of Heart Rate Variability (HRV) and for diagnosing 
-          various heart conditions.
+        - **R-Peaks** (the tips of those tall spikes) help us figure out
+          your heart rate.
+        - The **shape & duration** of the QRS can reveal if there’s an
+          electrical or structural issue with the heart (like blocked
+          signals or thickened muscle).
+        - Getting accurate QRS readings is crucial for measuring HRV
+          (to see how your heartbeat varies) and for diagnosing heart
+          conditions.
         """
+    )
+
+with st.expander("Example ECG QRS Diagram"):
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/9/9e/SinusRhythmLabels.svg",
+        caption="Annotated ECG waveform showing P, QRS, and T waves",
+        width=512
     )
