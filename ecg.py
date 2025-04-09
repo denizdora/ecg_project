@@ -3,101 +3,332 @@ import neurokit2 as nk
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Streamlit Title
+# -------------------------------------------------------------------
+# Title and Sliders
+# -------------------------------------------------------------------
 st.title("ECG Simulation with QRS Detection")
 
-# Sliders for user input
-duration = st.slider("Duration (seconds)", 5, 15, 10)
+duration_min = st.slider("Duration (minutes)", 5, 15, 10)
 sampling_rate = st.slider("Sampling Rate (Hz)", 100, 1000, 500)
 heart_rate = st.slider("Heart Rate (BPM)", 40, 200, 80)
-hrv_std = st.slider("Heart Rate Variability (Std in BPM)", 0, 20, 5)
+hrv_std = st.slider("HRV Std (BPM Variation)", 0, 20, 5)
 
-# Generating ECG signal
-ecg = nk.ecg_simulate(
-    duration=duration,
-    sampling_rate=sampling_rate,
-    heart_rate=heart_rate,
-    heart_rate_std=hrv_std,
-    method="ecgsyn"
+# Convert minutes to seconds
+duration = duration_min * 60
+
+# -------------------------------------------------------------------
+# 1. Regular ECG Generation (Full Signal)
+# -------------------------------------------------------------------
+@st.cache_data
+def generate_ecg(duration, sampling_rate, heart_rate, hrv_std):
+    """
+    Generate the full baseline ECG using ecg_simulate(), then detect R-peaks.
+    Return both the raw ECG & the R-peaks for the entire simulation.
+    """
+    ecg = nk.ecg_simulate(
+        duration=duration,
+        sampling_rate=sampling_rate,
+        heart_rate=heart_rate,
+        heart_rate_std=hrv_std,
+        method="ecgsyn"
+    )
+    signals, info = nk.ecg_process(ecg, sampling_rate=sampling_rate)
+    return ecg, signals, info
+
+# -------------------------------------------------------------------
+# 2. PVC Generation (Full Signal)
+# -------------------------------------------------------------------
+@st.cache_data
+def generate_ecg_with_pvc(duration, sampling_rate, heart_rate, hrv_std, pvc_time):
+    """
+    Generate a normal ECG, then distort a short window around pvc_time
+    to simulate a PVC by inverting and amplifying. Return the full signal.
+    """
+    ecg = nk.ecg_simulate(
+        duration=duration,
+        sampling_rate=sampling_rate,
+        heart_rate=heart_rate,
+        heart_rate_std=hrv_std,
+        method="ecgsyn"
+    )
+    pvc_index = int(pvc_time * sampling_rate)
+    window_size = int(0.15 * sampling_rate)
+
+    start_idx = max(0, pvc_index - window_size // 2)
+    end_idx = min(len(ecg), pvc_index + window_size // 2)
+
+    ecg[start_idx:end_idx] = -1.5 * ecg[start_idx:end_idx]
+
+    signals, info = nk.ecg_process(ecg, sampling_rate=sampling_rate)
+    return ecg, signals, info
+
+# -------------------------------------------------------------------
+# 3. Irregular ECG Generation (Full Signal)
+# -------------------------------------------------------------------
+@st.cache_data
+def generate_irregular_ecg(duration, sampling_rate):
+    """
+    Generate an ECG with higher HRV => more "irregular" (not a real arrhythmia).
+    Return the full signal & full R-peaks.
+    """
+    ecg = nk.ecg_simulate(
+        duration=duration,
+        sampling_rate=sampling_rate,
+        heart_rate=80,
+        heart_rate_std=15,
+        method="ecgsyn"
+    )
+    signals, info = nk.ecg_process(ecg, sampling_rate=sampling_rate)
+    return ecg, signals, info
+
+# -------------------------------------------------------------------
+# Main: Generate the full "Regular" ECG & store full R-peaks
+# -------------------------------------------------------------------
+full_ecg, full_signals, full_info = generate_ecg(
+    duration, sampling_rate, heart_rate, hrv_std
 )
+full_rpeaks = full_info["ECG_R_Peaks"]  # For entire signal
+full_time = np.linspace(0, duration, len(full_ecg))
 
-# Detecting QRS complexes
-signals, info = nk.ecg_process(ecg, sampling_rate=sampling_rate)
-rpeaks_indices = info["ECG_R_Peaks"]  # indices of the R-peak samples
+# We'll only modify the *plot* version of the signal if user zooms
+plot_ecg = full_ecg.copy()
+plot_time = full_time.copy()
+plot_rpeaks = full_rpeaks.copy()  # for the main plot
 
-# Creating time axis
-time = np.linspace(0, duration, len(ecg))
+# -------------------------------------------------------------------
+# Zoom / Full Checkbox (Main ECG)
+# -------------------------------------------------------------------
+show_full_main = st.checkbox("Show entire (main) ECG signal (may be unreadable)", value=False)
+if not show_full_main:
+    zoom_start, zoom_end = st.slider(
+        "Zoom into time window (seconds) for main ECG",
+        min_value=0.0,
+        max_value=float(duration),
+        value=(0.0, min(10.0, float(duration))),
+        step=1.0
+    )
+    # Mask only for plotting
+    mask_main = (plot_time >= zoom_start) & (plot_time <= zoom_end)
+    plot_time = plot_time[mask_main]
+    plot_ecg = plot_ecg[mask_main]
 
-# Plotting ECG + Detected R-peaks
+    # Adjust rpeaks so they match the new time window for the main plot
+    # but do NOT affect the full_rpeaks used for Poincaré
+    plot_rpeaks = [
+        i for i in plot_rpeaks if zoom_start <= i/sampling_rate <= zoom_end
+    ]
+    plot_rpeaks = [
+        int((i/sampling_rate - zoom_start)*sampling_rate) for i in plot_rpeaks
+    ]
+
+# Plot main ECG
 fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(time, ecg, label="ECG Signal", color="blue")
-
-# Plotting R-peaks as red circles
-ax.plot(time[rpeaks_indices], ecg[rpeaks_indices],
+ax.plot(plot_time, plot_ecg, label="Regular ECG", color="blue")
+ax.plot([plot_time[i] for i in plot_rpeaks if i < len(plot_time)],
+        [plot_ecg[i] for i in plot_rpeaks if i < len(plot_ecg)],
         "ro", label="Detected R-peaks", markersize=8, fillstyle="none")
-
 ax.set_xlabel("Time (seconds)")
 ax.set_ylabel("Amplitude")
-ax.set_title("ECG Signal with Detected QRS Complexes")
+ax.set_title("Regular ECG (with or without mild HRV)")
 ax.legend()
-
-# Displaying the plot in Streamlit
 st.pyplot(fig)
 
-# Expander for more info
-with st.expander("What is HRV (Heart Rate Variability)?"):
-    st.write(
-        """
-        **Heart Rate Variability (HRV)** is simply how much the time
-        between one heartbeat and the next changes. Even though we often
-        think our heart beats like a metronome, there's always a bit of
-        variation — and that variation can tell us a lot about our health
-        and stress levels.
+# Compute Normal RR intervals from the FULL signal, not the zoomed
+normal_rr = np.diff(full_rpeaks) / sampling_rate
 
-        - **Why it matters:** 
-          - A **higher HRV** suggests your heart is flexible and responds
-            well to changes (like stress or rest), often linked to better
-            fitness and overall health.
-          - A **lower HRV** may point to stress, fatigue, or potential
-            health issues. Athletes sometimes see a drop if they're
-            overtraining.
-        - **Common uses:** 
-          - Checking how well your body recovers from exercise or daily
-            stress.
-          - Spotting early signs of heart or health problems.
-          - Biofeedback (learning techniques to help control and improve
-            your HRV, which can reduce stress).
+# -------------------------------------------------------------------
+# Abnormal Rhythm + Poincaré Plots
+# -------------------------------------------------------------------
+with st.expander("Abnormal Rhythm Simulations"):
+
+    # Toggles
+    col1, col2 = st.columns(2)
+    with col1:
+        show_pvc = st.checkbox("Add 'PVC' (Wave Hack)")
+        pvc_time = st.slider("PVC time (s)", 1, int(duration - 1), 5) if show_pvc else None
+    with col2:
+        show_irregular = st.checkbox("Generate 'Irregular' ECG")
+
+    # Prepare placeholders for full R-peaks from PVC & Irregular
+    pvc_ecg_full = None
+    pvc_rpeaks_full = None
+    irreg_ecg_full = None
+    irreg_rpeaks_full = None
+
+    # ---------- PVC ----------
+    if show_pvc:
+        pvc_ecg_full, pvc_signals_full, pvc_info_full = generate_ecg_with_pvc(
+            duration, sampling_rate, heart_rate, hrv_std, pvc_time
+        )
+        pvc_rpeaks_full = pvc_info_full["ECG_R_Peaks"]
+        pvc_time_full = np.linspace(0, len(pvc_ecg_full)/sampling_rate, len(pvc_ecg_full))
+
+        # For plotting only, we create a local copy
+        plot_ecg_pvc = pvc_ecg_full.copy()
+        plot_time_pvc = pvc_time_full.copy()
+        plot_rpeaks_pvc = pvc_rpeaks_full.copy()
+
+        show_full_pvc = st.checkbox("Show entire PVC signal", value=True)
+        if not show_full_pvc:
+            pvc_zoom_start, pvc_zoom_end = st.slider(
+                "Zoom (seconds) for PVC ECG",
+                min_value=0.0,
+                max_value=float(len(pvc_ecg_full) / sampling_rate),
+                value=(0.0, min(5.0, float(len(pvc_ecg_full) / sampling_rate))),
+                step=0.5
+            )
+            mask_pvc = (plot_time_pvc >= pvc_zoom_start) & (plot_time_pvc <= pvc_zoom_end)
+            plot_time_pvc = plot_time_pvc[mask_pvc]
+            plot_ecg_pvc = plot_ecg_pvc[mask_pvc]
+
+            # Adjust only the plotted R-peaks
+            kept_peaks = [
+                i for i in plot_rpeaks_pvc
+                if pvc_zoom_start <= i/sampling_rate <= pvc_zoom_end
+            ]
+            kept_peaks = [
+                int((i/sampling_rate - pvc_zoom_start)*sampling_rate)
+                for i in kept_peaks
+            ]
+            plot_rpeaks_pvc = kept_peaks
+
+        # Plot the PVC-affected ECG (plot copy)
+        fig_pvc, ax_pvc = plt.subplots(figsize=(10, 3))
+        ax_pvc.plot(plot_time_pvc, plot_ecg_pvc, label="ECG with PVC Hack", color="purple")
+
+        # Only plot R-peaks within the array length
+        ax_pvc.plot(
+            [plot_time_pvc[i] for i in plot_rpeaks_pvc if i < len(plot_time_pvc)],
+            [plot_ecg_pvc[i]  for i in plot_rpeaks_pvc if i < len(plot_ecg_pvc)],
+            "ro", label="Detected R-peaks", markersize=8, fillstyle="none"
+        )
+        ax_pvc.axvline(x=pvc_time, color="red", linestyle="--", label="PVC time (approx)")
+        ax_pvc.set_title("Pseudo-PVC by Wave Inversion/Boost")
+        ax_pvc.legend()
+        st.pyplot(fig_pvc)
+
+    # ---------- Irregular Rhythm ----------
+    if show_irregular:
+        irreg_ecg_full, irreg_signals_full, irreg_info_full = generate_irregular_ecg(duration, sampling_rate)
+        irreg_rpeaks_full = irreg_info_full["ECG_R_Peaks"]
+        irreg_time_full = np.linspace(0, len(irreg_ecg_full)/sampling_rate, len(irreg_ecg_full))
+
+        # For plotting
+        plot_ecg_irreg = irreg_ecg_full.copy()
+        plot_time_irreg = irreg_time_full.copy()
+        plot_rpeaks_irreg = irreg_rpeaks_full.copy()
+
+        show_full_irreg = st.checkbox("Show entire Irregular signal", value=True)
+        if not show_full_irreg:
+            irreg_zoom_start, irreg_zoom_end = st.slider(
+                "Zoom (seconds) for Irregular ECG",
+                min_value=0.0,
+                max_value=float(len(irreg_ecg_full)/sampling_rate),
+                value=(0.0, min(5.0, float(len(irreg_ecg_full)/sampling_rate))),
+                step=0.5
+            )
+            mask_irreg = (plot_time_irreg >= irreg_zoom_start) & (plot_time_irreg <= irreg_zoom_end)
+            plot_time_irreg = plot_time_irreg[mask_irreg]
+            plot_ecg_irreg = plot_ecg_irreg[mask_irreg]
+
+            # Adjust only the plotted R-peaks
+            kept_peaks = [
+                i for i in plot_rpeaks_irreg
+                if irreg_zoom_start <= i/sampling_rate <= irreg_zoom_end
+            ]
+            kept_peaks = [
+                int((i/sampling_rate - irreg_zoom_start)*sampling_rate)
+                for i in kept_peaks
+            ]
+            plot_rpeaks_irreg = kept_peaks
+
+        # Plot the Irregular ECG
+        fig_irreg, ax_irreg = plt.subplots(figsize=(10, 3))
+        ax_irreg.plot(plot_time_irreg, plot_ecg_irreg, label="Irregular ECG", color="orange")
+        ax_irreg.plot(
+            [plot_time_irreg[i] for i in plot_rpeaks_irreg if i < len(plot_time_irreg)],
+            [plot_ecg_irreg[i]  for i in plot_rpeaks_irreg if i < len(plot_ecg_irreg)],
+            "ro", label="Detected R-peaks", markersize=8, fillstyle="none"
+        )
+        ax_irreg.set_title("ECG with Large HRV (Simulated Irregularity)")
+        ax_irreg.legend()
+        st.pyplot(fig_irreg)
+
+    # ---------------------------
+    # Poincaré Plot(s)
+    # ---------------------------
+    poincare_rr_data = []
+    poincare_labels = []
+    poincare_colors = []
+
+    # Normal always from the full R-peaks (no zoom)
+    normal_rr = np.diff(full_rpeaks) / sampling_rate
+    poincare_rr_data.append(normal_rr)
+    poincare_labels.append("Normal")
+    poincare_colors.append("blue")
+
+    # If PVC is active, compute its FULL RR intervals
+    if pvc_rpeaks_full is not None:
+        pvc_rr_full = np.diff(pvc_rpeaks_full) / sampling_rate
+        poincare_rr_data.append(pvc_rr_full)
+        poincare_labels.append("PVC")
+        poincare_colors.append("purple")
+
+    # If Irregular is active, compute its FULL RR intervals
+    if irreg_rpeaks_full is not None:
+        irr_rr_full = np.diff(irreg_rpeaks_full) / sampling_rate
+        poincare_rr_data.append(irr_rr_full)
+        poincare_labels.append("Irregular")
+        poincare_colors.append("orange")
+
+    ncols = len(poincare_rr_data)
+    fig_poinc, axes = plt.subplots(nrows=1, ncols=ncols, figsize=(6*ncols, 5))
+
+    # If there's only one subplot, wrap it in a list so we can iterate
+    if ncols == 1:
+        axes = [axes]
+
+    for i, rr_array in enumerate(poincare_rr_data):
+        ax_pc = axes[i]
+        x = rr_array[:-1]
+        y = rr_array[1:]
+        ax_pc.scatter(x, y, c=poincare_colors[i], alpha=0.7, label=poincare_labels[i])
+        ax_pc.set_xlabel("RR(n) [s]")
+        ax_pc.set_ylabel("RR(n+1) [s]")
+        ax_pc.set_title(f"Poincaré Plot - {poincare_labels[i]}")
+        ax_pc.grid(True)
+        ax_pc.legend()
+
+    st.pyplot(fig_poinc)
+
+# -------------------------------------------------------------------
+# Educational Section
+# -------------------------------------------------------------------
+with st.expander("What is a QRS in an ECG waveform? (Image)"):
+    st.markdown(
         """
+        <div style="background-color: white; padding: 10px; border-radius: 4px;">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/9/9e/SinusRhythmLabels.svg"
+                 alt="ECG waveform"
+                 style="display:block; margin:auto; width:512px;">
+            <p style="text-align:center; margin-top: 8px;">
+                Annotated ECG waveform showing P, QRS, and T waves
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-with st.expander("What is the QRS Complex?"):
-    st.write(
-        """
-        The **QRS Complex** is the main spike you see on an ECG, which
-        measures the heart’s electrical signals. It reflects the moment
-        your heart’s lower chambers (ventricles) contract to pump blood
-        throughout the body.
-
-        - **Parts of the QRS Complex:** 
-          - **Q wave:** A small dip before the biggest spike.
-          - **R wave:** The tall, sharp peak that's easiest to spot.
-          - **S wave:** A small dip right after the R wave.
-        
-        **Why it matters:**
-        - **R-Peaks** (the tips of those tall spikes) help us figure out
-          your heart rate.
-        - The **shape & duration** of the QRS can reveal if there’s an
-          electrical or structural issue with the heart (like blocked
-          signals or thickened muscle).
-        - Getting accurate QRS readings is crucial for measuring HRV
-          (to see how your heartbeat varies) and for diagnosing heart
-          conditions.
-        """
-    )
-
-with st.expander("Example ECG QRS Diagram"):
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/9/9e/SinusRhythmLabels.svg",
-        caption="Annotated ECG waveform showing P, QRS, and T waves",
-        width=512
-    )
+# -------------------------------------------------------------------
+# Remaining TO-DO / NOTES
+# -------------------------------------------------------------------
+## - standard deviation and HRV difference?
+## - longer signal?
+## - abnormal rhythms, show and detect them
+## - Poincaré plot, longer sequences
+## - % chance of premature heart beat?
+## - effect on Poincaré plot
+## - real data vs. synthesized data
+## - noise injection, quantization, etc.
+## - neurokit ecg_clean + compare
+## - streamlit deployment, streamlit cloud
