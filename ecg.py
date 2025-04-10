@@ -174,7 +174,7 @@ with st.expander("Abnormal Rhythm Simulations"):
                 "Zoom (seconds) for PVC ECG",
                 min_value=0.0,
                 max_value=float(len(pvc_ecg_full) / sampling_rate),
-                value=(pvc_time-5.0, min(pvc_time+5.0, float(len(pvc_ecg_full) / sampling_rate))),
+                value=(pvc_time-5.0, min(pvc_time+5, float(len(pvc_ecg_full) / sampling_rate))),
                 step=0.5
             )
             mask_pvc = (plot_time_pvc >= pvc_zoom_start) & (plot_time_pvc <= pvc_zoom_end)
