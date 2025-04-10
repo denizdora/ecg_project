@@ -145,7 +145,7 @@ with st.expander("Abnormal Rhythm Simulations"):
     col1, col2 = st.columns(2)
     with col1:
         show_pvc = st.checkbox("Add 'PVC' (Wave Hack)")
-        pvc_time = st.slider("PVC time (s)", 1, int(duration - 1), 5) if show_pvc else None
+        pvc_time = st.slider("PVC time (s)", 10, int(duration - 10), 10) if show_pvc else None
     with col2:
         show_irregular = st.checkbox("Generate 'Irregular' ECG")
 
@@ -174,7 +174,7 @@ with st.expander("Abnormal Rhythm Simulations"):
                 "Zoom (seconds) for PVC ECG",
                 min_value=0.0,
                 max_value=float(len(pvc_ecg_full) / sampling_rate),
-                value=(0.0, min(10.0, float(len(pvc_ecg_full) / sampling_rate))),
+                value=(pvc_time-5.0, min(pvc_time+5.0, float(len(pvc_ecg_full) / sampling_rate))),
                 step=0.5
             )
             mask_pvc = (plot_time_pvc >= pvc_zoom_start) & (plot_time_pvc <= pvc_zoom_end)
@@ -218,13 +218,13 @@ with st.expander("Abnormal Rhythm Simulations"):
         plot_time_irreg = irreg_time_full.copy()
         plot_rpeaks_irreg = irreg_rpeaks_full.copy()
 
-        show_full_irreg = st.checkbox("Show entire Irregular signal", value=True)
+        show_full_irreg = st.checkbox("Show entire Irregular signal", value=False)
         if not show_full_irreg:
             irreg_zoom_start, irreg_zoom_end = st.slider(
                 "Zoom (seconds) for Irregular ECG",
                 min_value=0.0,
                 max_value=float(len(irreg_ecg_full)/sampling_rate),
-                value=(0.0, min(5.0, float(len(irreg_ecg_full)/sampling_rate))),
+                value=(0.0, min(10.0, float(len(irreg_ecg_full)/sampling_rate))),
                 step=0.5
             )
             mask_irreg = (plot_time_irreg >= irreg_zoom_start) & (plot_time_irreg <= irreg_zoom_end)
