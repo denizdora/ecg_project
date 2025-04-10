@@ -168,13 +168,13 @@ with st.expander("Abnormal Rhythm Simulations"):
         plot_time_pvc = pvc_time_full.copy()
         plot_rpeaks_pvc = pvc_rpeaks_full.copy()
 
-        show_full_pvc = st.checkbox("Show entire PVC signal", value=True)
+        show_full_pvc = st.checkbox("Show entire PVC signal", value=False)
         if not show_full_pvc:
             pvc_zoom_start, pvc_zoom_end = st.slider(
                 "Zoom (seconds) for PVC ECG",
                 min_value=0.0,
                 max_value=float(len(pvc_ecg_full) / sampling_rate),
-                value=(0.0, min(5.0, float(len(pvc_ecg_full) / sampling_rate))),
+                value=(0.0, min(10.0, float(len(pvc_ecg_full) / sampling_rate))),
                 step=0.5
             )
             mask_pvc = (plot_time_pvc >= pvc_zoom_start) & (plot_time_pvc <= pvc_zoom_end)
@@ -325,7 +325,7 @@ with st.expander("What is a QRS in an ECG waveform? (Image)"):
 ## - standard deviation and HRV difference?
 ## - longer signal?
 ## - abnormal rhythms, show and detect them
-## - Poincaré plot, longer sequences
+## - Poincaré plot, longer sequencesa
 ## - % chance of premature heart beat?
 ## - effect on Poincaré plot
 ## - real data vs. synthesized data
