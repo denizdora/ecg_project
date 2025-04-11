@@ -36,34 +36,7 @@ def generate_ecg(duration, sampling_rate, heart_rate, hrv_std):
     return ecg, signals, info
 
 # -------------------------------------------------------------------
-# 2. PVC Generation (Full Signal)
-# -------------------------------------------------------------------
-@st.cache_data
-def generate_ecg_with_pvc(duration, sampling_rate, heart_rate, hrv_std, pvc_time):
-    """
-    Generate a normal ECG, then distort a short window around pvc_time
-    to simulate a PVC by inverting and amplifying. Return the full signal.
-    """
-    ecg = nk.ecg_simulate(
-        duration=duration,
-        sampling_rate=sampling_rate,
-        heart_rate=heart_rate,
-        heart_rate_std=hrv_std,
-        method="ecgsyn"
-    )
-    pvc_index = int(pvc_time * sampling_rate)
-    window_size = int(0.15 * sampling_rate)
-
-    start_idx = max(0, pvc_index - window_size // 2)
-    end_idx = min(len(ecg), pvc_index + window_size // 2)
-
-    ecg[start_idx:end_idx] = -1.5 * ecg[start_idx:end_idx]
-
-    signals, info = nk.ecg_process(ecg, sampling_rate=sampling_rate)
-    return ecg, signals, info
-
-# -------------------------------------------------------------------
-# 3. Irregular ECG Generation (Full Signal)
+# 2. Irregular ECG Generation (Full Signal)
 # -------------------------------------------------------------------
 @st.cache_data
 def generate_irregular_ecg(duration, sampling_rate):
@@ -113,7 +86,6 @@ if not show_full_main:
     plot_ecg = plot_ecg[mask_main]
 
     # Adjust rpeaks so they match the new time window for the main plot
-    # but do NOT affect the full_rpeaks used for Poincaré
     plot_rpeaks = [
         i for i in plot_rpeaks if zoom_start <= i/sampling_rate <= zoom_end
     ]
@@ -141,71 +113,12 @@ normal_rr = np.diff(full_rpeaks) / sampling_rate
 # -------------------------------------------------------------------
 with st.expander("Abnormal Rhythm Simulations"):
 
-    # Toggles
-    col1, col2 = st.columns(2)
-    with col1:
-        show_pvc = st.checkbox("Add 'PVC' (Wave Hack)")
-        pvc_time = st.slider("PVC time (s)", 10, int(duration - 10), 10) if show_pvc else None
-    with col2:
-        show_irregular = st.checkbox("Generate 'Irregular' ECG")
+    # Toggle only for Irregular ECG
+    show_irregular = st.checkbox("Generate 'Irregular' ECG")
 
-    # Prepare placeholders for full R-peaks from PVC & Irregular
-    pvc_ecg_full = None
-    pvc_rpeaks_full = None
+    # Prepare placeholders for Irregular R-peaks
     irreg_ecg_full = None
     irreg_rpeaks_full = None
-
-    # ---------- PVC ----------
-    if show_pvc:
-        pvc_ecg_full, pvc_signals_full, pvc_info_full = generate_ecg_with_pvc(
-            duration, sampling_rate, heart_rate, hrv_std, pvc_time
-        )
-        pvc_rpeaks_full = pvc_info_full["ECG_R_Peaks"]
-        pvc_time_full = np.linspace(0, len(pvc_ecg_full)/sampling_rate, len(pvc_ecg_full))
-
-        # For plotting only, we create a local copy
-        plot_ecg_pvc = pvc_ecg_full.copy()
-        plot_time_pvc = pvc_time_full.copy()
-        plot_rpeaks_pvc = pvc_rpeaks_full.copy()
-
-        show_full_pvc = st.checkbox("Show entire PVC signal", value=False)
-        if not show_full_pvc:
-            pvc_zoom_start, pvc_zoom_end = st.slider(
-                "Zoom (seconds) for PVC ECG",
-                min_value=0.0,
-                max_value=float(len(pvc_ecg_full) / sampling_rate),
-                value=(pvc_time-5.0, min(pvc_time+5, float(len(pvc_ecg_full) / sampling_rate))),
-                step=0.5
-            )
-            mask_pvc = (plot_time_pvc >= pvc_zoom_start) & (plot_time_pvc <= pvc_zoom_end)
-            plot_time_pvc = plot_time_pvc[mask_pvc]
-            plot_ecg_pvc = plot_ecg_pvc[mask_pvc]
-
-            # Adjust only the plotted R-peaks
-            kept_peaks = [
-                i for i in plot_rpeaks_pvc
-                if pvc_zoom_start <= i/sampling_rate <= pvc_zoom_end
-            ]
-            kept_peaks = [
-                int((i/sampling_rate - pvc_zoom_start)*sampling_rate)
-                for i in kept_peaks
-            ]
-            plot_rpeaks_pvc = kept_peaks
-
-        # Plot the PVC-affected ECG (plot copy)
-        fig_pvc, ax_pvc = plt.subplots(figsize=(10, 3))
-        ax_pvc.plot(plot_time_pvc, plot_ecg_pvc, label="ECG with PVC Hack", color="purple")
-
-        # Only plot R-peaks within the array length
-        ax_pvc.plot(
-            [plot_time_pvc[i] for i in plot_rpeaks_pvc if i < len(plot_time_pvc)],
-            [plot_ecg_pvc[i]  for i in plot_rpeaks_pvc if i < len(plot_ecg_pvc)],
-            "ro", label="Detected R-peaks", markersize=8, fillstyle="none"
-        )
-        ax_pvc.axvline(x=pvc_time, color="red", linestyle="--", label="PVC time (approx)")
-        ax_pvc.set_title("Pseudo-PVC by Wave Inversion/Boost")
-        ax_pvc.legend()
-        st.pyplot(fig_pvc)
 
     # ---------- Irregular Rhythm ----------
     if show_irregular:
@@ -267,13 +180,6 @@ with st.expander("Abnormal Rhythm Simulations"):
     poincare_labels.append("Normal")
     poincare_colors.append("blue")
 
-    # If PVC is active, compute its FULL RR intervals
-    if pvc_rpeaks_full is not None:
-        pvc_rr_full = np.diff(pvc_rpeaks_full) / sampling_rate
-        poincare_rr_data.append(pvc_rr_full)
-        poincare_labels.append("PVC")
-        poincare_colors.append("purple")
-
     # If Irregular is active, compute its FULL RR intervals
     if irreg_rpeaks_full is not None:
         irr_rr_full = np.diff(irreg_rpeaks_full) / sampling_rate
@@ -325,9 +231,7 @@ with st.expander("What is a QRS in an ECG waveform? (Image)"):
 ## - standard deviation and HRV difference?
 ## - longer signal?
 ## - abnormal rhythms, show and detect them
-## - Poincaré plot, longer sequencesa
-## - % chance of premature heart beat?
-## - effect on Poincaré plot
+## - Poincaré plot, longer sequences
 ## - real data vs. synthesized data
 ## - noise injection, quantization, etc.
 ## - neurokit ecg_clean + compare
